@@ -179,5 +179,26 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   // Cursor visibility control for cursor-free browser capture fallback
   hideOsCursor: () => ipcRenderer.invoke('hide-cursor'),
+
+  // Share video
+  shareVideo: (filePath: string, onProgress?: (percent: number) => void) => {
+    if (onProgress) {
+      const listener = (_event: Electron.IpcRendererEvent, percent: number) => onProgress(percent)
+      ipcRenderer.on('share-progress', listener)
+      // Clean up listener after upload completes
+      const cleanup = () => ipcRenderer.removeListener('share-progress', listener)
+      return ipcRenderer.invoke('share-video', filePath).then((result: any) => {
+        cleanup()
+        return result
+      }).catch((err: any) => {
+        cleanup()
+        throw err
+      })
+    }
+    return ipcRenderer.invoke('share-video', filePath)
+  },
+  getShareSettings: () => ipcRenderer.invoke('get-share-settings'),
+  saveShareSettings: (settings: { endpoint: string; token: string }) =>
+    ipcRenderer.invoke('save-share-settings', settings),
 })
 

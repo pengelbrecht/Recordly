@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { X, Download, Loader2 } from 'lucide-react';
+import { X, Download, Loader2, Share2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { ExportProgress } from '@/lib/exporter';
-import { toast } from 'sonner'; // Add this import
+import { toast } from 'sonner';
+import { ShareDialog } from './ShareDialog';
 
 
 interface ExportDialogProps {
@@ -31,6 +32,7 @@ export function ExportDialog({
   exportedFilePath, // Add this line
 }: ExportDialogProps) {
   const [showSuccess, setShowSuccess] = useState(false);
+  const [showShareDialog, setShowShareDialog] = useState(false);
 
   // Reset showSuccess when a new export starts or dialog reopens
   useEffect(() => {
@@ -49,13 +51,9 @@ export function ExportDialog({
   useEffect(() => {
     if (!isExporting && progress && progress.percentage >= 100 && !error) {
       setShowSuccess(true);
-      const timer = setTimeout(() => {
-        setShowSuccess(false);
-        onClose();
-      }, 2000);
-      return () => clearTimeout(timer);
+      // Don't auto-close — let user see the Share button
     }
-  }, [isExporting, progress, error, onClose]);
+  }, [isExporting, progress, error]);
 
   if (!isOpen) return null;
 
@@ -120,13 +118,25 @@ export function ExportDialog({
                   <span className="text-xl font-bold text-slate-200 block">Export Complete</span>
                   <span className="text-sm text-slate-400">Your {formatLabel.toLowerCase()} is ready</span>
                   {exportedFilePath && (
-                    <Button
-                      variant="secondary"
-                      onClick={handleClickShowInFolder}
-                      className="mt-2 w-fit px-3 py-1 text-sm rounded-md bg-white/10 hover:bg-white/20 text-slate-200"
-                    >
-                      Show in Folder
-                    </Button>
+                    <div className="flex gap-2 mt-2">
+                      <Button
+                        variant="secondary"
+                        onClick={handleClickShowInFolder}
+                        className="w-fit px-3 py-1 text-sm rounded-md bg-white/10 hover:bg-white/20 text-slate-200"
+                      >
+                        Show in Folder
+                      </Button>
+                      {exportFormat === 'mp4' && (
+                        <Button
+                          variant="secondary"
+                          onClick={() => setShowShareDialog(true)}
+                          className="w-fit px-3 py-1 text-sm rounded-md bg-[#2563EB]/20 hover:bg-[#2563EB]/30 text-[#60a5fa]"
+                        >
+                          <Share2 className="w-3.5 h-3.5 mr-1.5" />
+                          Share
+                        </Button>
+                      )}
+                    </div>
                   )}
                   {exportedFilePath && (
                     <span className="text-xs text-slate-500 break-all max-w-xs mt-1">
@@ -280,6 +290,12 @@ export function ExportDialog({
           </div>
         )}
       </div>
+
+      <ShareDialog
+        isOpen={showShareDialog}
+        onClose={() => setShowShareDialog(false)}
+        exportedFilePath={exportedFilePath}
+      />
     </>
   );
 }

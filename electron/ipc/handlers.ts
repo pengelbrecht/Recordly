@@ -2312,5 +2312,98 @@ export function registerIpcHandlers(
       return { success: false, error: String(error) };
     }
   });
+
+  // ---------------------------------------------------------------------------
+  // Share settings persistence
+  // ---------------------------------------------------------------------------
+  const SHARE_SETTINGS_FILE = path.join(app.getPath('userData'), 'share-settings.json')
+
+  ipcMain.handle('get-share-settings', async () => {
+    try {
+      const data = await fs.readFile(SHARE_SETTINGS_FILE, 'utf-8')
+      return { success: true, settings: JSON.parse(data) }
+    } catch {
+      return { success: true, settings: { endpoint: '', token: '' } }
+    }
+  })
+
+  ipcMain.handle('save-share-settings', async (_, settings: { endpoint: string; token: string }) => {
+    try {
+      await fs.writeFile(SHARE_SETTINGS_FILE, JSON.stringify(settings, null, 2), 'utf-8')
+      return { success: true }
+    } catch (error) {
+      return { success: false, error: String(error) }
+    }
+  })
+
+  // ---------------------------------------------------------------------------
+  // Share video upload — streams file to the Cloudflare Worker
+  // ---------------------------------------------------------------------------
+  ipcMain.handle('share-video', async (event, filePath: string) => {
+    try {
+      let settings: { endpoint: string; token: string }
+      try {
+        const data = await fs.readFile(SHARE_SETTINGS_FILE, 'utf-8')
+        settings = JSON.parse(data)
+      } catch {
+        return { success: false, error: 'Share not configured. Set your endpoint URL and token in Settings → Share.' }
+      }
+
+      if (!settings.endpoint || !settings.token) {
+        return { success: false, error: 'Share not configured. Set your endpoint URL and token in Settings → Share.' }
+      }
+
+      const stat = await fs.stat(filePath)
+      const fileSize = stat.size
+      const fileName = path.basename(filePath)
+
+      // Read the entire file into memory for upload
+      const fileBuffer = await fs.readFile(filePath)
+
+      // Send progress updates via IPC
+      const sender = event.sender
+
+      // We can't get streaming upload progress easily with fetch,
+      // so we report 0 → 50 (uploading) → 100 (done)
+      sender.send('share-progress', 10)
+
+      const endpoint = settings.endpoint.replace(/\/+$/, '')
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 300_000) // 5 min timeout
+
+      sender.send('share-progress', 30)
+
+      const response = await fetch(`${endpoint}/upload`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${settings.token}`,
+          'Content-Type': 'video/mp4',
+          'X-Filename': fileName,
+          'Content-Length': String(fileSize),
+        },
+        body: fileBuffer,
+        signal: controller.signal,
+      })
+
+      clearTimeout(timeoutId)
+      sender.send('share-progress', 90)
+
+      if (!response.ok) {
+        const text = await response.text()
+        return { success: false, error: `Upload failed (${response.status}): ${text}` }
+      }
+
+      const result = await response.json() as { id: string; url: string; raw: string }
+      sender.send('share-progress', 100)
+
+      return { success: true, url: result.url, id: result.id, raw: result.raw }
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        return { success: false, error: 'Upload timed out (5 minutes). Try a smaller file or check your connection.' }
+      }
+      console.error('Share upload error:', error)
+      return { success: false, error: String(error) }
+    }
+  })
 }
 

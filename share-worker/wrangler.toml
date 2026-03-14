@@ -1,0 +1,13 @@
+name = "recordly-share"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+
+[vars]
+SHARE_DOMAIN = "https://share.example.com"
+
+# Set via `wrangler secret put SHARE_SECRET`
+# SHARE_SECRET = ""
+
+[[r2_buckets]]
+binding = "VIDEOS"
+bucket_name = "recordly-videos"
